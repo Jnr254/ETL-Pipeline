@@ -1,0 +1,74 @@
+
+# This YAML file defines a Docker Compose configuration for setting up an ELT (Extract, Load, Transform) pipeline.
+
+# Version:
+#   - The Compose file uses version 3 syntax.
+
+# Services:
+#   1. `source_postgres`:
+#      - A PostgreSQL database instance to serve as the source database for the ELT process.
+#      - Uses the `postgres:15` Docker image.
+#      - Exposes the PostgreSQL default port (5432) to host port 5433.
+#      - Connected to the `elt_network` for service communication.
+#      - Sets the database name, user, and password via environment variables.
+#      - Initializes the database with a custom SQL script (`init.sql`) located at `./source_db_init/`.
+
+#   2. `destination_postgres`:
+#      - A PostgreSQL database instance to serve as the destination database for the ELT process.
+#      - Uses the `postgres:15` Docker image.
+#      - Exposes the PostgreSQL default port (5432) to host port 5434.
+#      - Connected to the `elt_network` for service communication.
+#      - Sets the database name, user, and password via environment variables.
+
+#   3. `elt_script`:
+#      - A service to run the custom Python ELT script (`elt_script.py`).
+#      - Builds a Docker image from the `./elt_script` directory, which must contain a `Dockerfile`.
+#      - Specifies the command to execute the Python script (`elt_script.py`).
+#      - Depends on both the `source_postgres` and `destination_postgres` services, ensuring they are started before running.
+#      - Connected to the `elt_network` for database communication.
+
+# Networks:
+#   - `elt_network`:
+#     - A custom bridge network allowing communication between the `source_postgres`, `destination_postgres`, and `elt_script` services.
+
+#version: '3.8'
+
+services:
+  source_postgres:
+    image: postgres:16
+    ports:
+      - '5433:5432'
+    networks:
+      - etl_network
+    environment:
+      POSTGRES_DB: source_db
+      POSTGRES_USER: postgres_etl
+      POSTGRES_PASSWORD: secret
+    volumes:
+      - ./source_db_init/init.sql:/docker-entrypoint-initdb.d/init.sql
+
+  destination_postgres:
+    image: postgres:16
+    ports:
+      - '5434:5432'
+    networks:
+      - etl_network
+    environment:
+      POSTGRES_DB: destination_db
+      POSTGRES_USER: postgres_etl
+      POSTGRES_PASSWORD: secret
+
+  etl_script:
+    build:
+      context: ./etl # Directory containing the Dockerfile and elt_script.py
+      dockerfile: Dockerfile # Name of the Dockerfile, if it's something other than "Dockerfile", specify here
+    command: ['python', 'etl_script.py']
+    networks:
+      - etl_network
+    depends_on:
+      - source_postgres
+      - destination_postgres
+
+networks:
+  etl_network:
+    driver: bridge
